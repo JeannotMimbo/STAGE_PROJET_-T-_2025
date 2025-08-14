@@ -1,0 +1,403 @@
+---
+title: "SANTE_MENTALE"
+author: "Jeannot Mimbo"
+date: "2025-05-05"
+output:
+  word_document: default
+  html_document: default
+---
+# ------------------------------------------
+# Étape 1 : Chargement des bibliothèques
+# ------------------------------------------
+```{r Charger les bibliothèques}
+library(tidyverse)
+library(readr)
+library(skimr)
+library(janitor)
+library(FactoMineR)
+library(factoextra)
+library(dplyr)
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(e1071)
+library(pROC)
+library(tibble)
+
+```
+# ------------------------------------------
+# Étape 2 : Importation et exploration initiale
+# ------------------------------------------
+```{r Importation du jeu de données Student_Mental_health}
+df<- read_csv("~/Documents/PROJET_ÉTÉ_2025/Data/Student_Mental_health.csv")
+
+# Nettoyer les noms de colonnes
+df <- df %>% clean_names()
+
+# Aperçu des données
+glimpse(df)
+```
+```{r Valeurs uniques CGPA}
+# Valeurs uniques CGPA
+unique(df$what_is_your_cgpa)
+
+df %>%
+  count(what_is_your_cgpa) %>%
+  arrange(desc(n))
+
+```
+
+```{r les_premières_data}
+
+# Afficher les premières lignes
+head(df)
+
+```
+
+```{r les_valeurs_manquantes_data}
+
+# Valeurs manquantes
+colSums(is.na(df))
+
+```
+
+```{r doulons_data}
+
+# Vérification_des_ doulons data
+sum(duplicated(df))
+
+```
+
+```{r valeurs_unique_data}
+
+# Valeurs uniques par colonne du data
+sapply(df, n_distinct)
+
+```
+
+```{r valeurs_textuelles_data}
+
+# Valeurs des colonnes textuelles
+df %>% select(where(is.character)) %>% map(~table(.)) %>% map(head)
+
+```
+
+```{r Statistiques_descriptives_data}
+
+# Statistiques descriptives numériques
+summary(df %>% select(where(is.numeric)))
+
+```
+
+```{r skimr_data}
+# Complément avec skimr
+skim(df)
+```
+# -----------------------------------------
+## Étape 3 : Nettoyage et transformation des données
+# -----------------------------------------
+## Identifier les valeurs non convertibles
+```{r valeurs_uniques_avant_conversion}
+# Voir les valeurs uniques avant conversion
+unique(df$what_is_your_cgpa)
+```
+
+## Affiche les valeurs originales de la colonne
+```{r valeurs_originale_colonne_data}
+table(df$what_is_your_cgpa, useNA = "ifany")
+
+```
+
+```{r Application_CGPA_bon_recodage}
+
+# Recode CGPA catégorisé
+df <- df %>%
+  mutate(
+    cgpa = case_when(
+      what_is_your_cgpa == "0 - 1.99"    ~ 1.00,
+      what_is_your_cgpa == "2.00 - 2.49" ~ 2.25,
+      what_is_your_cgpa == "2.50 - 2.99" ~ 2.75,
+      what_is_your_cgpa == "3.00 - 3.49" ~ 3.25,
+      what_is_your_cgpa == "3.50 - 4.00" ~ 3.75,
+      TRUE ~ NA_real_
+    )
+  )
+# Vérification de recodage du CGPA
+summary(df$cgpa)
+
+``` 
+
+
+* La moyenne (3.359) est très proche de la médiane (3.25), ce qui suggère que la distribution est légèrement asymétrique à droite (quelques valeurs un peu plus hautes que la moyenne).
+* La majorité des étudiants ont des performances moyennes à élevées (entre 3.25 et 3.75).
+* Le CGPA minimum (1.0) semble être une valeur aberrante ou très marginale.
+
+```{r recodage_data}
+#  Recodage de nos variables du data
+df <- df %>%
+  mutate(
+    depression = if_else(do_you_have_depression == "Yes", 1, 0),
+    anxiety = if_else(do_you_have_anxiety == "Yes", 1, 0),
+    panic_attack = if_else(do_you_have_panic_attack == "Yes", 1, 0),
+    sought_help = if_else(did_you_seek_any_specialist_for_a_treatment == "Yes", 1, 0),
+    gender = factor(choose_your_gender),
+    course = factor(what_is_your_course),
+    year_of_study = factor(your_current_year_of_study)
+  )
+
+```
+
+```{r normaliser_variable_factorielle_year_of_study}
+# Normaliser proprement pour en faire une variable factorielle du variable year_of_study
+df <- df %>%
+  mutate(
+    year_of_study = str_to_lower(your_current_year_of_study),  # tout en minuscules
+    year_of_study = str_extract(year_of_study, "\\d"),          # extraire le chiffre (1 à 4)
+    year_of_study = factor(year_of_study, levels = c("1", "2", "3", "4"))  # facteur ordonné
+  )
+```
+## Traitement de variable l'âge
+
+```{r variable_age}
+# Statistiques descriptives de l'âge
+summary(df$age)
+
+# Vérifier les valeurs uniques
+unique(df$age)
+# Supprimer les lignes avec NA dans la variable âge 
+df <- df %>% filter(!is.na(age))
+# Histogramme 
+hist(df$age, main = "Distribution des âges", xlab = "Âge", col = "lightblue", breaks = 10)
+```
+# Interprétation :
+* Les étudiants de ton échantillon ont entre 18 et 24 ans.
+* L’âge est réparti sur une courte plage, ce qui est cohérent avec une population universitaire.
+
+# -----------------------------------------
+# Étape 4 : Visualisations exploratoires
+# -----------------------------------------
+# CGPA selon la dépression
+```{r cgpa_dépression}
+# CGPA selon la dépression
+ggplot(df, aes(x = as.factor(depression), y = cgpa)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(title = "CGPA selon la dépression", x = "Dépression", y = "CGPA")
+```
+# CGPA selon l’anxiété
+
+```{r cgpa_anxiété}
+# CGPA selon l’anxiété
+ggplot(df, aes(x = as.factor(anxiety), y = cgpa)) +
+  geom_boxplot(fill = "salmon") +
+  labs(title = "CGPA selon l’anxiété", x = "Anxiété", y = "CGPA")
+```
+# Genre vs anxiété
+
+```{r Genre_et_anxiété}
+
+# Genre vs anxiété
+ggplot(df, aes(x = gender, fill = as.factor(anxiety))) +
+  geom_bar(position = "fill") +
+  labs(title = "Proportion d’anxiété par genre", y = "Proportion", fill = "Anxiété") +
+  scale_y_continuous(labels = scales::percent)
+```
+* La visualisation souligne une différence de répartition d’anxiété selon le genre, avec un taux légèrement plus élevé chez les hommes de cet échantillon. Cela justifie une analyse plus poussée pour comprendre les facteurs associés à cette différence (comme le niveau d’étude, les performances académiques, etc.).
+
+# Année d’étude vs dépression
+
+```{r Année_étude_et_dépression}
+# Année d’étude vs dépression
+ggplot(df, aes(x = year_of_study, fill = as.factor(depression))) +
+  geom_bar(position = "fill") +
+  labs(title = "Dépression selon l’année d’étude", y = "Proportion", fill = "Dépression") +
+  scale_y_continuous(labels = scales::percent)
+```
+* 1ère année : Le taux de dépression est relativement élevé. En particulier, une des modalités ("year 1") présente plus de 30 % de dépression, tandis que l’autre ("Year 1") est à 50 %, ce qui suggère des doublons dus à une erreur de casse ou de format.
+
+* 2e et 3e années : Les taux sont assez similaires, entre 30 % et 40 %, indiquant une présence constante mais significative de dépression dans ces cohortes.
+
+* 4e année : La prévalence de la dépression est nettement plus faible, avec une majorité écrasante d’étudiants sans dépression. Cela pourrait être dû à une meilleure adaptation, une sélection naturelle (ceux qui persévèrent sont plus résilients), ou un soutien accru.
+
+# Tranche d’âge
+```{r tranche_age}
+# Tranche d’âge
+df <- df %>%
+  mutate(tranche_age = cut(age, breaks = c(15, 18, 21, 25, 30),
+                           labels = c("15-18", "19-21", "22-25", "26-30"),
+                           include.lowest = TRUE))
+
+# Tranche d’âge vs anxiété
+ggplot(df, aes(x = tranche_age, fill = as.factor(anxiety))) +
+  geom_bar(position = "fill") +
+  labs(title = "Anxiété selon les groupes d’âge", y = "Proportion", x = "Groupe d’âge") +
+  scale_y_continuous(labels = scales::percent)
+```
+
+# Interprétation :
+Le CGPA (moyenne cumulative) des étudiants ne semble pas différer de manière significative entre les deux groupes : ceux souffrant de dépression (1) et ceux qui n’en souffrent pas (0). La médiane et les quartiles sont similaires. Cela suggère que la dépression n’a pas un impact clairement observable sur les résultats académiques (CGPA), du moins selon cette variable seule.
+
+# Tableau croisé anxiété/dépression
+```{r Tableau_croisé_anxiété_dépression}
+# Tableau croisé anxiété et dépression
+df %>%
+  count(anxiety, depression) %>%
+  ggplot(aes(x = as.factor(anxiety), y = as.factor(depression), fill = n)) +
+  geom_tile() +
+  geom_text(aes(label = n), color = "white", size = 5) +
+  labs(title = "Relation entre Anxiété et Dépression")
+
+```
+#---------------------------------------
+# Étape 5 : ACP et Clustering
+#---------------------------------------
+```{r acp}
+# Sélection et standardisation
+acp_data <- df %>%
+  select(age, cgpa, depression, anxiety, panic_attack, sought_help)
+acp_data_scaled <- scale(acp_data)
+
+# ACP
+res_pca <- PCA(acp_data_scaled, graph = FALSE)
+fviz_eig(res_pca, addlabels = TRUE)
+fviz_pca_var(res_pca, col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"))
+
+fviz_pca_ind(res_pca,
+             col.ind = as.factor(df$depression),
+             palette = c("darkgreen", "red"),
+             addEllipses = TRUE)
+
+# Clustering
+fviz_nbclust(acp_data_scaled, kmeans, method = "wss")
+
+set.seed(123)
+k3 <- kmeans(acp_data_scaled, centers = 3, nstart = 25)
+df$cluster <- as.factor(k3$cluster)
+
+# Visualisation des clusters
+fviz_pca_ind(res_pca, col.ind = df$cluster, palette = "Dark2", addEllipses = TRUE)
+fviz_pca_biplot(res_pca, habillage = df$cluster, palette = "Set1", addEllipses = TRUE)
+
+# Résumé des profils
+df %>% group_by(cluster) %>%
+  summarise(across(c(age, cgpa, depression, anxiety, sought_help), mean), n = n())
+
+```
+### Interprétation des profils de clusters
+### Cluster 1 (majoritaire - 63 étudiants) :
+* Âge moyen : ~20.6 ans
+* CGPA moyen : 3.33 (bon niveau académique)
+* Taux de dépression faible : seulement 22 %
+* Aucun signe d’anxiété ni demande d’aide
+* Profil : étudiants relativement stables, bons résultats, peu de troubles mentaux apparents.
+
+### Cluster 2 (31 étudiants) :
+* Âge moyen : ~20.2 ans
+* CGPA élevé : 3.48
+* Dépression modérée : près de 1 étudiant sur 2
+* 100 % anxieux mais aucun n’a demandé de l’aide
+* Profil : étudiants anxieux et à risque de dépression, mais n’ont pas cherché de soutien → population à cibler pour prévention.
+
+### Cluster 3 (6 étudiants) :
+* Âge moyen : 21 ans
+* CGPA bon : 3.42
+* 100 % en dépression
+* 50 % anxieux et 100 % ont demandé de l’aide
+* Profil : étudiants en situation critique, mais engagés dans une démarche de soins → ils ont reconnu leur état et consulté. 
+
+
+#---------------------------------------
+#  Étape 6 : Modélisation prédictive
+#---------------------------------------
+```{r Séparer_jeu_entraînement_test}
+# Données
+data_model <- df %>%
+  select(depression, age, cgpa, anxiety, panic_attack, sought_help, year_of_study, gender) %>%
+  na.omit()
+data_model$depression <- as.factor(data_model$depression)
+
+# Partition du jeu des données 80% entraînement et 20% test
+set.seed(123)
+index <- createDataPartition(data_model$depression, p = 0.8, list = FALSE)
+train_data <- data_model[index, ]
+test_data <- data_model[-index, ]
+
+```
+# Régression Logistique
+```{r Régression_logistique}
+modele_logit <- glm(depression ~ ., data = train_data, family = "binomial")
+summary(modele_logit)
+
+proba <- predict(modele_logit, newdata = test_data, type = "response")
+pred <- factor(ifelse(proba > 0.5, 1, 0), levels = c(0, 1))
+confusionMatrix(pred, test_data$depression, positive = "1")
+
+```
+# Arbre de décision
+```{r Arbre_décision}
+tree_model <- rpart(depression ~ ., data = train_data, method = "class")
+rpart.plot(tree_model)
+tree_pred <- predict(tree_model, newdata = test_data, type = "class")
+confusionMatrix(tree_pred, test_data$depression, positive = "1")
+
+```
+# Random Forest
+```{r Random_forest}
+set.seed(123)
+rf_model <- randomForest(depression ~ ., data = train_data, importance = TRUE, ntree = 500)
+rf_pred <- predict(rf_model, newdata = test_data)
+confusionMatrix(rf_pred, test_data$depression, positive = "1")
+
+```
+# SVM + ROC
+```{r SVM_ROC}
+set.seed(123)
+svm_model <- svm(depression ~ ., data = train_data, kernel = "radial", probability = TRUE)
+svm_pred <- predict(svm_model, newdata = test_data)
+confusionMatrix(svm_pred, test_data$depression, positive = "1")
+
+svm_probs <- predict(svm_model, newdata = test_data, probability = TRUE)
+proba_attr <- attr(svm_probs, "probabilities")[, "1"]
+roc_curve <- roc(test_data$depression, proba_attr)
+plot(roc_curve, col = "blue")
+auc(roc_curve)
+
+```
+#---------------------------------------
+#  Étape 7 : Sauvegarde des modèles
+#---------------------------------------
+```{r Sauvegarde_modeles}
+if (!dir.exists("modeles")) dir.create("modeles")
+
+saveRDS(modele_logit, "modeles/modele_logit.rds")
+saveRDS(rf_model, "modeles/rf_model.rds")
+saveRDS(tree_model, "modeles/tree_model.rds")
+saveRDS(svm_model, "modeles/svm_model.rds")
+saveRDS(data_model, "modeles/data_model.rds")
+
+
+```
+# -----------------------------------------
+# Étape 8 : Comparaison des performances
+# -----------------------------------------
+```{r Comparaison_des_modèles }
+resultats_modeles <- tibble::tibble(
+  Modèle = c("Régression Logistique", "Arbre de Décision", "Random Forest", "SVM"),
+  Exactitude = c(0.45, 0.65, 0.50, 0.65),
+  Sensibilité = c(0.14, 0.00, 0.00, 0.00),
+  Spécificité = c(0.62, 1.00, 0.77, 1.00),
+  AUC = c(NA, NA, NA, round(auc(roc_curve), 3))  
+)
+
+print(resultats_modeles)
+
+```
+
+
+
+
+
+
+
+

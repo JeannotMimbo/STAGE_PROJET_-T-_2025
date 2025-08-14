@@ -1,0 +1,37 @@
+# --- FICHIERS R ET RSTUDIO ---
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+.Rapp.history
+*.Rproj
+
+# --- CACHE ET FICHIERS TEMPORAIRES ---
+*_cache/
+cache/
+*.utf8.md
+*.knit.md
+
+# --- EXPORTS AUTOMATIQUES ---
+*.html
+*.docx
+*.pdf
+*.xlsx
+*.csv
+
+# --- QUARTO / RMARKDOWN ---
+*_files/
+
+# --- DONNÉES BRUTES SENSIBLES ---
+*.rds
+*.RData
+*.sav
+*.dta
+*.xls*
+*.sas7bdat
+
+# --- OS / SYSTÈME ---
+.DS_Store
+Thumbs.db
+
+
